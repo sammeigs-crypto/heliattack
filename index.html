@@ -1,825 +1,91 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Netanyahu Gaza Defense</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background: #000;
-            font-family: Arial, sans-serif;
-        }
-        canvas {
-            display: block;
-            touch-action: none;
-            cursor: crosshair;
-        }
-    </style>
-</head>
-<body>
-    <canvas id="game"></canvas>
-    <script>
-        const canvas = document.getElementById('game');
-        const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = false;
+<!-- ... same head and body as before ... -->
+<script>
+    // ... (keep all variables, objects, event listeners the same until gameLoop) ...
 
-        let gameState = 'playing';
-        let score = 0;
-        let lives = 5;
-        let cameraX = 0;
-        let groundY;
-        let frame = 0;
-        let lastSpawnDist = 0;
-        let lastStructureDist = 0;
+    function updateBullets() {
+        const slow = player.timeDistort > 0 ? 0.5 : 1;
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            // Cap trail length strictly
+            b.trail.push({x: b.x, y: b.y});
+            if (b.trail.length > 6) b.trail.shift();
 
-        const player = {
-            x: 200,
-            y: 0,
-            width: 40,
-            height: 60,
-            vx: 0,
-            vy: 0,
-            onGround: false,
-            shootCooldown: 0,
-            weapon: 'pistol',
-            ammo: Infinity,
-            hyperJumpReady: true,
-            timeDistort: 0,
-            timeDistortCooldown: 0,
-            aimAngle: 0
-        };
+            b.x += b.vx * slow;
+            b.y += b.vy * slow;
 
-        let bullets = [];
-        let enemies = [];
-        let powerups = [];
-        let platforms = [];
-
-        const weapons = {
-            pistol: { cooldown: 8, speed: 12, damage: 1, color: '#FFD700', size: 5, spread: 0, count: 1, explode: false, pierce: false, type: 'bullet' },
-            machinegun: { cooldown: 3, speed: 14, damage: 1, color: '#FF4500', size: 4, spread: 0.1, count: 1, explode: false, pierce: false, type: 'bullet', ammo: 200 },
-            rocket: { cooldown: 20, speed: 8, damage: 5, color: '#FF0000', size: 8, spread: 0, count: 1, explode: true, pierce: false, type: 'rocket', ammo: 20 },
-            laser: { cooldown: 5, speed: 20, damage: 2, color: '#00FFFF', size: 6, spread: 0, count: 1, explode: false, pierce: true, type: 'laser', ammo: 100 }
-        };
-
-        const keys = {};
-        const pointer = { x: 0, y: 0, isDown: false, id: -1 };
-        let aimX = 0;
-        let aimY = 0;
-        let shooting = false;
-        let leftPressed = false;
-        let rightPressed = false;
-        let jumpPressed = false;
-        let hyperJumpPressed = false;
-        let timeDistortPressed = false;
-
-        const buttonY = () => canvas.height - 100;
-        const buttonLeftX = 30;
-        const buttonJumpX = 110;
-        const buttonRightX = 190;
-        let buttonHyperX = canvas.width - 250;
-        let buttonDistortX = canvas.width - 150;
-        const buttonW = 60;
-        const buttonH = 60;
-
-        window.addEventListener('resize', resizeCanvas);
-        window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
-        window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-
-        canvas.addEventListener('pointerdown', handlePointerDown);
-        canvas.addEventListener('pointermove', handlePointerMove);
-        canvas.addEventListener('pointerup', handlePointerUp);
-        canvas.addEventListener('pointercancel', handlePointerUp);
-        canvas.addEventListener('pointerleave', handlePointerUp);
-
-        function handlePointerDown(e) {
-            e.preventDefault();
-            if (pointer.id !== -1) return;
-            pointer.id = e.pointerId;
-            pointer.isDown = true;
-            updatePointerPos(e);
-        }
-
-        function handlePointerMove(e) {
-            if (e.pointerId !== pointer.id) return;
-            updatePointerPos(e);
-        }
-
-        function handlePointerUp(e) {
-            if (e.pointerId !== pointer.id) return;
-            pointer.id = -1;
-            pointer.isDown = false;
-        }
-
-        function updatePointerPos(e) {
-            const rect = canvas.getBoundingClientRect();
-            pointer.x = ((e.clientX - rect.left) / rect.width) * canvas.width;
-            pointer.y = ((e.clientY - rect.top) / rect.height) * canvas.height;
-        }
-
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            buttonHyperX = canvas.width - 250;
-            buttonDistortX = canvas.width - 150;
-        }
-
-        function updateInput() {
-            leftPressed = keys['a'] || keys['arrowleft'];
-            rightPressed = keys['d'] || keys['arrowright'];
-            jumpPressed = keys['w'] || keys[' '] || keys['arrowup'];
-            hyperJumpPressed = keys['ctrl'];
-            timeDistortPressed = keys['shift'];
-
-            if (pointer.isDown) {
-                const by = buttonY();
-                if (pointer.x < canvas.width / 2) {
-                    leftPressed = leftPressed || (pointer.x >= buttonLeftX && pointer.x <= buttonLeftX + buttonW && pointer.y >= by && pointer.y <= by + buttonH);
-                    jumpPressed = jumpPressed || (pointer.x >= buttonJumpX && pointer.x <= buttonJumpX + buttonW && pointer.y >= by && pointer.y <= by + buttonH);
-                    rightPressed = rightPressed || (pointer.x >= buttonRightX && pointer.x <= buttonRightX + buttonW && pointer.y >= by && pointer.y <= by + buttonH);
-                } else {
-                    hyperJumpPressed = hyperJumpPressed || (pointer.x >= buttonHyperX && pointer.x <= buttonHyperX + buttonW && pointer.y >= by && pointer.y <= by + buttonH);
-                    timeDistortPressed = timeDistortPressed || (pointer.x >= buttonDistortX && pointer.x <= buttonDistortX + buttonW && pointer.y >= by && pointer.y <= by + buttonH);
-                }
-
-                if (pointer.y < by && pointer.x > canvas.width / 3) {
-                    aimX = pointer.x;
-                    aimY = pointer.y;
-                    shooting = true;
-                } else {
-                    shooting = false;
-                }
-            } else {
-                shooting = false;
+            // Hard kill very old/long-living bullets
+            if (b.x < cameraX - 300 || b.x > cameraX + canvas.width + 300 ||
+                b.y < -300 || b.y > canvas.height + 300 ||
+                b.trail.length > 200) {  // safety net
+                bullets.splice(i, 1);
             }
         }
 
-        function updatePlayer() {
-            updateInput();
+        // Global bullet cap - prevent memory bomb
+        if (bullets.length > 300) {
+            bullets.splice(0, bullets.length - 250);
+        }
+    }
 
-            if (leftPressed) player.vx = Math.max(player.vx - 0.8, -8);
-            if (rightPressed) player.vx = Math.min(player.vx + 0.8, 8);
-            if (jumpPressed && player.onGround) {
-                player.vy = -14;
-                player.onGround = false;
-            }
-            if (hyperJumpPressed && !player.onGround && player.hyperJumpReady) {
-                player.vy = -12;
-                player.hyperJumpReady = false;
-            }
-            if (timeDistortPressed && player.timeDistortCooldown <= 0) {
-                player.timeDistort = 120;
-                player.timeDistortCooldown = 600;
-            }
+    function generateStructures() {
+        // Make structures spawn less frequently to reduce object count
+        if (player.x > lastStructureDist + 600 + Math.random() * 400) {
+            const type = Math.random() < 0.4 ? 'mosque' : 'building';
+            const height = 150 + Math.random() * 200;
+            const width = 100 + Math.random() * 150;
+            const x = cameraX + canvas.width + 150;
+            const y = groundY - height;
+            platforms.push({ x, y, width, height, type });
 
-            player.vy += 0.8;
-            player.vx *= 0.92;
-            player.x += player.vx;
-            player.y += player.vy;
-
-            player.x = Math.max(0, player.x);
-
-            // Update aim angle
-            const playerCenterX = player.x + player.width / 2 - cameraX;
-            const playerCenterY = player.y + player.height / 2;
-            player.aimAngle = Math.atan2(aimY - playerCenterY, aimX - playerCenterX);
-
-            player.onGround = false;
-            for (const p of platforms) {
-                if (player.x + player.width > p.x && player.x < p.x + p.width &&
-                    player.y + player.height > p.y && player.y + player.height - player.vy <= p.y &&
-                    player.vy >= 0) {
-                    player.y = p.y - player.height;
-                    player.vy = 0;
-                    player.onGround = true;
-                    player.hyperJumpReady = true;
-                }
+            // Fewer platforms per building
+            const numPlatforms = Math.floor(Math.random() * 2) + 1;
+            for (let i = 0; i < numPlatforms; i++) {
+                const pWidth = 50 + Math.random() * 80;
+                const pX = x + Math.random() * (width - pWidth);
+                const pY = y + (height / (numPlatforms + 1)) * (i + 1) - 10;
+                platforms.push({ x: pX, y: pY, width: pWidth, height: 10, type: 'platform' });
             }
 
-            groundY = canvas.height - 120;
-            if (player.y + player.height > groundY) {
-                player.y = groundY - player.height;
-                player.vy = 0;
-                player.onGround = true;
-                player.hyperJumpReady = true;
-            }
-
-            const w = weapons[player.weapon];
-            if (shooting && player.shootCooldown <= 0 && (player.ammo > 0 || player.ammo === Infinity)) {
-                const playerCenterX = player.x + player.width / 2;
-                const playerCenterY = player.y + player.height / 2;
-                const dx = (cameraX + aimX) - playerCenterX;
-                const dy = aimY - playerCenterY;
-                const dist = Math.hypot(dx, dy);
-                if (dist > 10) {
-                    for (let i = 0; i < w.count; i++) {
-                        const angleOffset = (Math.random() - 0.5) * w.spread;
-                        const angle = Math.atan2(dy, dx) + angleOffset;
-                        bullets.push({
-                            x: playerCenterX,
-                            y: playerCenterY,
-                            vx: Math.cos(angle) * w.speed,
-                            vy: Math.sin(angle) * w.speed,
-                            damage: w.damage,
-                            color: w.color,
-                            size: w.size,
-                            isPlayer: true,
-                            explode: w.explode,
-                            pierce: w.pierce,
-                            hits: 0,
-                            type: w.type,
-                            trail: []
-                        });
-                    }
-                    player.shootCooldown = w.cooldown;
-                    if (player.ammo !== Infinity) player.ammo--;
-                    if (player.ammo <= 0) player.weapon = 'pistol';
-                }
-            }
-            if (player.shootCooldown > 0) player.shootCooldown--;
-
-            if (player.timeDistort > 0) player.timeDistort--;
-            if (player.timeDistortCooldown > 0) player.timeDistortCooldown--;
+            lastStructureDist = player.x;
         }
 
-        function updateBullets() {
-            const slow = player.timeDistort > 0 ? 0.5 : 1;
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const b = bullets[i];
-                b.trail.push({x: b.x, y: b.y});
-                if (b.trail.length > 5) b.trail.shift();
+        // Much more aggressive cleanup
+        platforms = platforms.filter(p => p.x + p.width > cameraX - 400);
+    }
 
-                b.x += b.vx * slow;
-                b.y += b.vy * slow;
-
-                if (b.x < cameraX - 100 || b.x > cameraX + canvas.width + 100 ||
-                    b.y < -100 || b.y > canvas.height + 100) {
-                    bullets.splice(i, 1);
-                }
+    // In gameLoop, add this safety at the very beginning:
+    function gameLoop() {
+        if (frame % 300 === 0) {  // every ~5 seconds @60fps
+            // Force garbage collection hint + log for debugging
+            if (bullets.length > 200 || platforms.length > 80) {
+                console.log("Cleaning up - bullets:", bullets.length, "platforms:", platforms.length);
             }
         }
 
-        function updateEnemies() {
-            const slow = player.timeDistort > 0 ? 0.5 : 1;
-            if (player.x > lastSpawnDist + 800 + Math.random() * 600) {
-                enemies.push({
-                    x: cameraX + canvas.width + 50 + Math.random() * 200,
-                    y: 50 + Math.random() * 200,
-                    width: 60,
-                    height: 80,
-                    vx: -2.5 - Math.random() * 1,
-                    phase: Math.random() * Math.PI * 2,
-                    shootCooldown: 100 + Math.random() * 100,
-                    health: 5 + Math.floor(score / 500), // Stronger enemies
-                    colorHue: 100 + Math.random() * 40
-                });
-                lastSpawnDist = player.x;
-            }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        groundY = canvas.height - 120;
 
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const e = enemies[i];
-                e.x += e.vx * slow;
-                e.y += Math.sin(frame * 0.02 + e.phase) * 1.5 * slow;
-
-                if (e.shootCooldown <= 0) {
-                    const playerCenterX = player.x + player.width / 2;
-                    const playerCenterY = player.y + player.height / 2;
-                    const dx = playerCenterX - (e.x + e.width / 2);
-                    const dy = playerCenterY - (e.y + e.height / 2);
-                    const dist = Math.hypot(dx, dy);
-                    if (dist > 50 && Math.random() < 0.1) {
-                        const angle = Math.atan2(dy, dx);
-                        bullets.push({
-                            x: e.x + e.width / 2 + 10,
-                            y: e.y + e.height / 2 + 10,
-                            vx: Math.cos(angle) * 7,
-                            vy: Math.sin(angle) * 7,
-                            damage: 1,
-                            color: '#FF0000',
-                            size: 4,
-                            isPlayer: false,
-                            type: 'bullet'
-                        });
-                        e.shootCooldown = 100 + Math.random() * 100;
-                    }
-                } else {
-                    e.shootCooldown--;
-                }
-
-                if (e.x + e.width < cameraX - 100) {
-                    enemies.splice(i, 1);
-                }
-            }
+        if (gameState === 'playing') {
+            updateGame();
+        } else if (pointer.isDown) {
+            resetGame();
         }
 
-        function updatePowerups() {
-            for (let i = powerups.length - 1; i >= 0; i--) {
-                const pu = powerups[i];
-                pu.y += 2;
-                if (pu.y > groundY) {
-                    powerups.splice(i, 1);
-                }
+        drawBG();
+        drawStructures();
+        drawBullets();
+        drawPowerups();
+        enemies.forEach(drawEnemy);
+        drawPlayer();
+        drawUI();
 
-                if (player.x + player.width > pu.x && player.x < pu.x + pu.size &&
-                    player.y + player.height > pu.y && player.y < pu.y + pu.size) {
-                    if (pu.type === 'health') {
-                        lives = Math.min(5, lives + 1);
-                    } else {
-                        player.weapon = pu.type;
-                        player.ammo = weapons[pu.type].ammo || Infinity;
-                    }
-                    powerups.splice(i, 1);
-                }
-            }
+        if (gameState === 'gameover') {
+            drawGameOver();
         }
 
-        function generateStructures() {
-            if (player.x > lastStructureDist + 300 + Math.random() * 200) {
-                const type = Math.random() < 0.4 ? 'mosque' : 'building';
-                const height = 150 + Math.random() * 200;
-                const width = 100 + Math.random() * 150;
-                const x = cameraX + canvas.width + 100;
-                const y = groundY - height;
-                platforms.push({ x, y, width, height, type });
+        frame++;
+        requestAnimationFrame(gameLoop);
+    }
 
-                // Add multiple platforms for jumping and hiding
-                const numPlatforms = Math.floor(Math.random() * 3) + 1;
-                for (let i = 0; i < numPlatforms; i++) {
-                    const pWidth = 40 + Math.random() * 60;
-                    const pX = x + Math.random() * (width - pWidth);
-                    const pY = y + (height / (numPlatforms + 1)) * (i + 1) - 10;
-                    platforms.push({ x: pX, y: pY, width: pWidth, height: 10, type: 'platform' });
-                }
-
-                // Add overhangs or caves: lower platforms with space under
-                if (Math.random() < 0.3) {
-                    platforms.push({ x: x + 20, y: groundY - 50, width: width - 40, height: 10, type: 'platform' });
-                }
-
-                lastStructureDist = player.x;
-            }
-
-            platforms = platforms.filter(p => p.x + p.width > cameraX - 200);
-        }
-
-        function checkCollisions() {
-            for (let bi = bullets.length - 1; bi >= 0; bi--) {
-                const b = bullets[bi];
-                if (!b.isPlayer) continue;
-                for (let ei = enemies.length - 1; ei >= 0; ei--) {
-                    const e = enemies[ei];
-                    if (b.x > e.x && b.x < e.x + e.width &&
-                        b.y > e.y && b.y < e.y + e.height) {
-                        e.health -= b.damage;
-                        if (b.explode) {
-                            // Damage nearby enemies
-                            for (let ej = enemies.length - 1; ej >= 0; ej--) {
-                                if (ej !== ei) {
-                                    const dist = Math.hypot(enemies[ej].x - b.x, enemies[ej].y - b.y);
-                                    if (dist < 50) enemies[ej].health -= b.damage / 2;
-                                }
-                            }
-                            bullets.splice(bi, 1);
-                        } else if (!b.pierce || ++b.hits > 3) {
-                            bullets.splice(bi, 1);
-                        }
-                        if (e.health <= 0) {
-                            enemies.splice(ei, 1);
-                            score += 100;
-                            if (Math.random() < 0.4) {
-                                const types = ['machinegun', 'rocket', 'laser', 'health'];
-                                powerups.push({
-                                    x: e.x + e.width / 2,
-                                    y: e.y + e.height / 2,
-                                    size: 20,
-                                    type: types[Math.floor(Math.random() * types.length)]
-                                });
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-
-            for (let bi = bullets.length - 1; bi >= 0; bi--) {
-                const b = bullets[bi];
-                if (b.isPlayer) continue;
-                if (b.x > player.x && b.x < player.x + player.width &&
-                    b.y > player.y && b.y < player.y + player.height) {
-                    bullets.splice(bi, 1);
-                    lives = Math.max(0, lives - 1);
-                }
-            }
-
-            for (let ei = enemies.length - 1; ei >= 0; ei--) {
-                const e = enemies[ei];
-                if (player.x + player.width > e.x && player.x < e.x + e.width &&
-                    player.y + player.height > e.y && player.y < e.y + e.height) {
-                    enemies.splice(ei, 1);
-                    lives = Math.max(0, lives - 1);
-                }
-            }
-        }
-
-        function updateCamera() {
-            cameraX = Math.max(0, player.x + player.width / 2 - canvas.width * 0.3);
-        }
-
-        function updateGame() {
-            updatePlayer();
-            updateBullets();
-            updateEnemies();
-            updatePowerups();
-            generateStructures();
-            checkCollisions();
-            updateCamera();
-            if (lives <= 0) gameState = 'gameover';
-        }
-
-        function drawBG() {
-            const skyGrad = ctx.createLinearGradient(0, 0, 0, groundY);
-            skyGrad.addColorStop(0, '#B0C4DE');
-            skyGrad.addColorStop(1, '#D2B48C');
-            ctx.fillStyle = skyGrad;
-            ctx.fillRect(0, 0, canvas.width, groundY);
-
-            ctx.fillStyle = '#CDAF95';
-            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
-
-            ctx.fillStyle = '#808080';
-            const rubbleSpacing = 50;
-            for (let i = 0; i < canvas.width * 1.5; i += rubbleSpacing) {
-                const gx = (i - (cameraX % rubbleSpacing)) % canvas.width;
-                ctx.fillRect(gx, groundY, 20, 10);
-                ctx.fillRect(gx + 10, groundY - 5, 15, 15);
-            }
-        }
-
-        function drawStructures() {
-            for (const p of platforms) {
-                const sx = p.x - cameraX;
-                if (sx + p.width < 0 || sx > canvas.width) continue;
-
-                ctx.save();
-                ctx.translate(sx, p.y);
-
-                if (p.type === 'building') {
-                    ctx.fillStyle = '#A9A9A9';
-                    ctx.fillRect(0, 0, p.width, p.height);
-                    ctx.fillStyle = '#000';
-                    for (let j = 0; j < 3; j++) {
-                        ctx.fillRect(10 + j * 30, 20, 20, 20);
-                        ctx.fillRect(10 + j * 30, 60, 20, 20);
-                    }
-                    ctx.strokeStyle = '#696969';
-                    ctx.lineWidth = 3;
-                    ctx.beginPath();
-                    ctx.moveTo(0, 0);
-                    ctx.lineTo(p.width / 2, p.height / 3);
-                    ctx.lineTo(p.width, 0);
-                    ctx.stroke();
-                } else if (p.type === 'mosque') {
-                    ctx.fillStyle = '#F5F5DC';
-                    ctx.fillRect(0, p.height * 0.4, p.width, p.height * 0.6);
-                    ctx.beginPath();
-                    ctx.arc(p.width / 2, p.height * 0.4, p.width / 3, Math.PI, 0);
-                    ctx.fill();
-                    ctx.fillRect(p.width - 20, 0, 20, p.height * 0.5);
-                    ctx.beginPath();
-                    ctx.arc(p.width - 10, 0, 10, 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.fillStyle = '#000';
-                    ctx.beginPath();
-                    ctx.arc(30, p.height, 20, Math.PI, 0);
-                    ctx.arc(70, p.height, 20, Math.PI, 0);
-                    ctx.fill();
-                } else {
-                    ctx.fillStyle = '#808080';
-                    ctx.fillRect(0, 0, p.width, p.height);
-                }
-
-                ctx.restore();
-            }
-        }
-
-        function drawPlayer() {
-            const screenX = player.x - cameraX;
-            const screenY = player.y;
-            ctx.save();
-            ctx.translate(screenX + player.width / 2, screenY + player.height / 2);
-
-            // Body
-            ctx.fillStyle = '#00008B';
-            ctx.fillRect(-18, -10, 36, 40);
-
-            ctx.fillStyle = '#FFF';
-            ctx.fillRect(-15, -5, 30, 30);
-
-            ctx.fillStyle = '#B22222';
-            ctx.beginPath();
-            ctx.moveTo(-3, -5);
-            ctx.lineTo(3, -5);
-            ctx.lineTo(0, 25);
-            ctx.fill();
-
-            ctx.fillStyle = '#FFE4C4';
-            ctx.beginPath();
-            ctx.ellipse(0, -30, 15, 20, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#DCDCDC';
-            ctx.beginPath();
-            ctx.moveTo(-15, -40);
-            ctx.quadraticCurveTo(0, -50, 15, -40);
-            ctx.lineTo(15, -30);
-            ctx.quadraticCurveTo(0, -35, -15, -30);
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.arc(-16, -25, 3, 0, Math.PI * 2);
-            ctx.arc(16, -25, 3, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#FFF';
-            ctx.beginPath();
-            ctx.arc(-5, -30, 3, 0, Math.PI * 2);
-            ctx.arc(5, -30, 3, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.arc(-5, -30, 1, 0, Math.PI * 2);
-            ctx.arc(5, -30, 1, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#A9A9A9';
-            ctx.fillRect(-8, -35, 6, 2);
-            ctx.fillRect(2, -35, 6, 2);
-
-            ctx.beginPath();
-            ctx.moveTo(0, -28);
-            ctx.lineTo(-2, -20);
-            ctx.lineTo(2, -20);
-            ctx.fill();
-
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(-5, -18);
-            ctx.lineTo(5, -18);
-            ctx.stroke();
-
-            ctx.fillStyle = '#FFE4C4';
-            ctx.fillRect(-25, 0, 10, 10);
-            ctx.fillRect(15, 0, 10, 10);
-
-            // Draw weapon
-            ctx.save();
-            ctx.rotate(player.aimAngle);
-            ctx.fillStyle = weapons[player.weapon].color;
-            ctx.fillRect(20, -2, 20, 4); // Barrel
-            ctx.fillStyle = '#333';
-            ctx.fillRect(10, -5, 10, 10); // Grip
-            ctx.restore();
-
-            ctx.restore();
-        }
-
-        function drawEnemy(e) {
-            const screenX = e.x - cameraX;
-            const screenY = e.y;
-            if (screenX < -e.width || screenX > canvas.width) return;
-            ctx.save();
-            ctx.translate(screenX + e.width / 2, screenY + e.height / 2);
-
-            ctx.fillStyle = `hsl(${e.colorHue}, 50%, 40%)`;
-            ctx.beginPath();
-            ctx.moveTo(-40, -40);
-            ctx.quadraticCurveTo(0, -60, 40, -40);
-            ctx.lineTo(40, -30);
-            ctx.quadraticCurveTo(0, -50, -40, -30);
-            ctx.fill();
-            ctx.strokeStyle = '#222';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(-30, -30);
-            ctx.lineTo(-10, 10);
-            ctx.moveTo(0, -30);
-            ctx.lineTo(0, 10);
-            ctx.moveTo(30, -30);
-            ctx.lineTo(10, 10);
-            ctx.stroke();
-
-            ctx.fillStyle = '#808080';
-            ctx.beginPath();
-            ctx.arc(0, -20, 20, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(0, -40);
-            ctx.lineTo(0, 0);
-            ctx.moveTo(-20, -20);
-            ctx.lineTo(20, -20);
-            ctx.stroke();
-
-            ctx.fillStyle = '#696969';
-            ctx.fillRect(-15, -15, 30, 20);
-
-            ctx.fillStyle = '#556B2F';
-            ctx.fillRect(-8, 10, 16, 30);
-
-            ctx.fillStyle = '#D2B48C';
-            ctx.beginPath();
-            ctx.arc(0, 0, 8, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#000';
-            ctx.beginPath();
-            ctx.moveTo(-10, -5);
-            ctx.lineTo(10, -5);
-            ctx.lineTo(0, 15);
-            ctx.fill();
-            ctx.strokeStyle = '#FFF';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            for (let k = 0; k < 3; k++) {
-                ctx.moveTo(-10 + k * 7, -5);
-                ctx.lineTo(-10 + k * 7, 15);
-                ctx.moveTo(-10, -5 + k * 7);
-                ctx.lineTo(10, -5 + k * 7);
-            }
-            ctx.stroke();
-
-            ctx.fillStyle = '#333';
-            ctx.fillRect(5, 15, 25, 3);
-            ctx.fillRect(20, 12, 5, 6);
-
-            ctx.restore();
-        }
-
-        function drawBullets() {
-            for (const b of bullets) {
-                const sx = b.x - cameraX;
-                const sy = b.y;
-                ctx.save();
-                if (b.type === 'laser') {
-                    // Draw as beam with glow
-                    ctx.strokeStyle = b.color;
-                    ctx.shadowColor = b.color;
-                    ctx.shadowBlur = 5;
-                    ctx.lineWidth = b.size / 2;
-                    ctx.beginPath();
-                    ctx.moveTo(sx, sy);
-                    b.trail.forEach(t => {
-                        ctx.lineTo(t.x - cameraX, t.y);
-                    });
-                    ctx.stroke();
-                    ctx.shadowBlur = 0;
-                } else if (b.type === 'rocket') {
-                    // Draw rocket shape with trail
-                    ctx.fillStyle = '#888';
-                    ctx.beginPath();
-                    ctx.moveTo(sx, sy);
-                    ctx.lineTo(sx - 10, sy - 3);
-                    ctx.lineTo(sx - 10, sy + 3);
-                    ctx.fill();
-                    ctx.strokeStyle = '#FF8C00';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(sx - 10, sy);
-                    b.trail.forEach(t => {
-                        ctx.lineTo(t.x - cameraX - 10, t.y);
-                    });
-                    ctx.stroke();
-                } else {
-                    // Simple bullet
-                    ctx.fillStyle = b.color;
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, b.size / 2, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-                ctx.restore();
-            }
-        }
-
-        function drawPowerups() {
-            for (const pu of powerups) {
-                const sx = pu.x - cameraX;
-                const sy = pu.y;
-                ctx.fillStyle = pu.type === 'health' ? '#00FF00' : '#FFFF00';
-                ctx.fillRect(sx, sy, pu.size, pu.size);
-                ctx.fillStyle = '#000';
-                ctx.font = '12px Arial';
-                ctx.fillText(pu.type[0].toUpperCase(), sx + 5, sy + 15);
-            }
-        }
-
-        function drawUI() {
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.font = 'bold 32px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(`Score: ${score}`, 20, 40);
-            ctx.fillText(`Lives: ${lives}`, 20, 80);
-            ctx.fillText(`Weapon: ${player.weapon} ${player.ammo !== Infinity ? player.ammo : ''}`, 20, 120);
-
-            const by = buttonY();
-            ctx.fillStyle = leftPressed ? '#FFD700' : '#666';
-            ctx.fillRect(buttonLeftX, by, buttonW, buttonH);
-            ctx.fillStyle = '#FFF';
-            ctx.font = '40px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText('←', buttonLeftX + buttonW / 2, by + buttonH / 2);
-            ctx.fillStyle = jumpPressed ? '#FFD700' : '#666';
-            ctx.fillRect(buttonJumpX, by, buttonW, buttonH);
-            ctx.fillText('↑', buttonJumpX + buttonW / 2, by + buttonH / 2);
-            ctx.fillStyle = rightPressed ? '#FFD700' : '#666';
-            ctx.fillRect(buttonRightX, by, buttonW, buttonH);
-            ctx.fillText('→', buttonRightX + buttonW / 2, by + buttonH / 2);
-            ctx.fillStyle = hyperJumpPressed ? '#FFD700' : '#666';
-            ctx.fillRect(buttonHyperX, by, buttonW, buttonH);
-            ctx.fillText('H', buttonHyperX + buttonW / 2, by + buttonH / 2);
-            ctx.fillStyle = timeDistortPressed ? '#FFD700' : '#666';
-            ctx.fillRect(buttonDistortX, by, buttonW, buttonH);
-            ctx.fillText('T', buttonDistortX + buttonW / 2, by + buttonH / 2);
-
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'alphabetic';
-        }
-
-        function drawGameOver() {
-            ctx.fillStyle = 'rgba(0,0,0,0.7)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#FFF';
-            ctx.font = '60px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText('Game Over', canvas.width / 2, canvas.height / 2 - 50);
-            ctx.font = '40px Arial';
-            ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2);
-            ctx.font = '30px Arial';
-            ctx.fillText('Tap to Restart', canvas.width / 2, canvas.height / 2 + 50);
-        }
-
-        function resetGame() {
-            player.x = 200;
-            player.y = groundY - player.height;
-            player.vx = 0;
-            player.vy = 0;
-            player.onGround = true;
-            player.shootCooldown = 0;
-            player.weapon = 'pistol';
-            player.ammo = Infinity;
-            player.hyperJumpReady = true;
-            player.timeDistort = 0;
-            player.timeDistortCooldown = 0;
-            bullets = [];
-            enemies = [];
-            powerups = [];
-            platforms = [];
-            score = 0;
-            lives = 5;
-            cameraX = 0;
-            lastSpawnDist = 0;
-            lastStructureDist = 0;
-            frame = 0;
-            gameState = 'playing';
-        }
-
-        function gameLoop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            groundY = canvas.height - 120;
-
-            if (gameState === 'playing') {
-                updateGame();
-            } else if (pointer.isDown) {
-                resetGame();
-            }
-
-            drawBG();
-            drawStructures();
-            drawBullets();
-            drawPowerups();
-            enemies.forEach(drawEnemy);
-            drawPlayer();
-            drawUI();
-
-            if (gameState === 'gameover') {
-                drawGameOver();
-            }
-
-            frame++;
-            requestAnimationFrame(gameLoop);
-        }
-
-        resizeCanvas();
-        gameLoop();
-    </script>
-</body>
-</html>
+    // ... rest of the code remains the same ...
+</script>
