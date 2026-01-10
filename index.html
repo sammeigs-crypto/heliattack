@@ -48,7 +48,8 @@
             ammo: Infinity,
             hyperJumpReady: true,
             timeDistort: 0,
-            timeDistortCooldown: 0
+            timeDistortCooldown: 0,
+            aimAngle: 0
         };
 
         let bullets = [];
@@ -57,10 +58,10 @@
         let platforms = [];
 
         const weapons = {
-            pistol: { cooldown: 8, speed: 12, damage: 1, color: '#FFD700', size: 5, spread: 0, count: 1, explode: false, pierce: false },
-            machinegun: { cooldown: 3, speed: 14, damage: 1, color: '#FF4500', size: 4, spread: 0.1, count: 1, explode: false, pierce: false, ammo: 200 },
-            rocket: { cooldown: 20, speed: 8, damage: 3, color: '#FF0000', size: 8, spread: 0, count: 1, explode: true, pierce: false, ammo: 20 },
-            laser: { cooldown: 5, speed: 20, damage: 2, color: '#00FFFF', size: 6, spread: 0, count: 1, explode: false, pierce: true, ammo: 100 }
+            pistol: { cooldown: 8, speed: 12, damage: 1, color: '#FFD700', size: 5, spread: 0, count: 1, explode: false, pierce: false, type: 'bullet' },
+            machinegun: { cooldown: 3, speed: 14, damage: 1, color: '#FF4500', size: 4, spread: 0.1, count: 1, explode: false, pierce: false, type: 'bullet', ammo: 200 },
+            rocket: { cooldown: 20, speed: 8, damage: 5, color: '#FF0000', size: 8, spread: 0, count: 1, explode: true, pierce: false, type: 'rocket', ammo: 20 },
+            laser: { cooldown: 5, speed: 20, damage: 2, color: '#00FFFF', size: 6, spread: 0, count: 1, explode: false, pierce: true, type: 'laser', ammo: 100 }
         };
 
         const keys = {};
@@ -180,6 +181,11 @@
 
             player.x = Math.max(0, player.x);
 
+            // Update aim angle
+            const playerCenterX = player.x + player.width / 2 - cameraX;
+            const playerCenterY = player.y + player.height / 2;
+            player.aimAngle = Math.atan2(aimY - playerCenterY, aimX - playerCenterX);
+
             player.onGround = false;
             for (const p of platforms) {
                 if (player.x + player.width > p.x && player.x < p.x + p.width &&
@@ -218,11 +224,13 @@
                             vy: Math.sin(angle) * w.speed,
                             damage: w.damage,
                             color: w.color,
-                            size: w.size * 1.5, // Increased size for easier hits
+                            size: w.size,
                             isPlayer: true,
                             explode: w.explode,
                             pierce: w.pierce,
-                            hits: 0
+                            hits: 0,
+                            type: w.type,
+                            trail: []
                         });
                     }
                     player.shootCooldown = w.cooldown;
@@ -240,6 +248,9 @@
             const slow = player.timeDistort > 0 ? 0.5 : 1;
             for (let i = bullets.length - 1; i >= 0; i--) {
                 const b = bullets[i];
+                b.trail.push({x: b.x, y: b.y});
+                if (b.trail.length > 5) b.trail.shift();
+
                 b.x += b.vx * slow;
                 b.y += b.vy * slow;
 
@@ -256,12 +267,12 @@
                 enemies.push({
                     x: cameraX + canvas.width + 50 + Math.random() * 200,
                     y: 50 + Math.random() * 200,
-                    width: 60, // Slightly larger hitbox
+                    width: 60,
                     height: 80,
                     vx: -2.5 - Math.random() * 1,
                     phase: Math.random() * Math.PI * 2,
                     shootCooldown: 100 + Math.random() * 100,
-                    health: 1, // Reduced health for easier kills
+                    health: 5 + Math.floor(score / 500), // Stronger enemies
                     colorHue: 100 + Math.random() * 40
                 });
                 lastSpawnDist = player.x;
@@ -288,7 +299,8 @@
                             damage: 1,
                             color: '#FF0000',
                             size: 4,
-                            isPlayer: false
+                            isPlayer: false,
+                            type: 'bullet'
                         });
                         e.shootCooldown = 100 + Math.random() * 100;
                     }
@@ -296,10 +308,8 @@
                     e.shootCooldown--;
                 }
 
-                // Remove passed enemies without deducting lives to prevent sudden game over
                 if (e.x + e.width < cameraX - 100) {
                     enemies.splice(i, 1);
-                    // No lives-- here
                 }
             }
         }
@@ -318,7 +328,7 @@
                         lives = Math.min(5, lives + 1);
                     } else {
                         player.weapon = pu.type;
-                        player.ammo = weapons[pu.type].ammo;
+                        player.ammo = weapons[pu.type].ammo || Infinity;
                     }
                     powerups.splice(i, 1);
                 }
@@ -326,7 +336,7 @@
         }
 
         function generateStructures() {
-            if (player.x > lastStructureDist + 400 + Math.random() * 300) {
+            if (player.x > lastStructureDist + 300 + Math.random() * 200) {
                 const type = Math.random() < 0.4 ? 'mosque' : 'building';
                 const height = 150 + Math.random() * 200;
                 const width = 100 + Math.random() * 150;
@@ -334,8 +344,18 @@
                 const y = groundY - height;
                 platforms.push({ x, y, width, height, type });
 
-                if (Math.random() < 0.6) {
-                    platforms.push({ x: x + Math.random() * width / 2, y: y + height / 3, width: 50, height: 10, type: 'platform' });
+                // Add multiple platforms for jumping and hiding
+                const numPlatforms = Math.floor(Math.random() * 3) + 1;
+                for (let i = 0; i < numPlatforms; i++) {
+                    const pWidth = 40 + Math.random() * 60;
+                    const pX = x + Math.random() * (width - pWidth);
+                    const pY = y + (height / (numPlatforms + 1)) * (i + 1) - 10;
+                    platforms.push({ x: pX, y: pY, width: pWidth, height: 10, type: 'platform' });
+                }
+
+                // Add overhangs or caves: lower platforms with space under
+                if (Math.random() < 0.3) {
+                    platforms.push({ x: x + 20, y: groundY - 50, width: width - 40, height: 10, type: 'platform' });
                 }
 
                 lastStructureDist = player.x;
@@ -345,7 +365,6 @@
         }
 
         function checkCollisions() {
-            // Player bullets hit enemies
             for (let bi = bullets.length - 1; bi >= 0; bi--) {
                 const b = bullets[bi];
                 if (!b.isPlayer) continue;
@@ -354,7 +373,16 @@
                     if (b.x > e.x && b.x < e.x + e.width &&
                         b.y > e.y && b.y < e.y + e.height) {
                         e.health -= b.damage;
-                        if (!b.pierce || ++b.hits > 3) {
+                        if (b.explode) {
+                            // Damage nearby enemies
+                            for (let ej = enemies.length - 1; ej >= 0; ej--) {
+                                if (ej !== ei) {
+                                    const dist = Math.hypot(enemies[ej].x - b.x, enemies[ej].y - b.y);
+                                    if (dist < 50) enemies[ej].health -= b.damage / 2;
+                                }
+                            }
+                            bullets.splice(bi, 1);
+                        } else if (!b.pierce || ++b.hits > 3) {
                             bullets.splice(bi, 1);
                         }
                         if (e.health <= 0) {
@@ -375,7 +403,6 @@
                 }
             }
 
-            // Enemy bullets hit player
             for (let bi = bullets.length - 1; bi >= 0; bi--) {
                 const b = bullets[bi];
                 if (b.isPlayer) continue;
@@ -386,7 +413,6 @@
                 }
             }
 
-            // Enemy-player collision
             for (let ei = enemies.length - 1; ei >= 0; ei--) {
                 const e = enemies[ei];
                 if (player.x + player.width > e.x && player.x < e.x + e.width &&
@@ -484,6 +510,7 @@
             ctx.save();
             ctx.translate(screenX + player.width / 2, screenY + player.height / 2);
 
+            // Body
             ctx.fillStyle = '#00008B';
             ctx.fillRect(-18, -10, 36, 40);
 
@@ -547,6 +574,15 @@
             ctx.fillRect(-25, 0, 10, 10);
             ctx.fillRect(15, 0, 10, 10);
 
+            // Draw weapon
+            ctx.save();
+            ctx.rotate(player.aimAngle);
+            ctx.fillStyle = weapons[player.weapon].color;
+            ctx.fillRect(20, -2, 20, 4); // Barrel
+            ctx.fillStyle = '#333';
+            ctx.fillRect(10, -5, 10, 10); // Grip
+            ctx.restore();
+
             ctx.restore();
         }
 
@@ -557,7 +593,6 @@
             ctx.save();
             ctx.translate(screenX + e.width / 2, screenY + e.height / 2);
 
-            // Paraglider canopy - more wing-like
             ctx.fillStyle = `hsl(${e.colorHue}, 50%, 40%)`;
             ctx.beginPath();
             ctx.moveTo(-40, -40);
@@ -569,7 +604,6 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Strings
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
@@ -581,12 +615,10 @@
             ctx.lineTo(10, 10);
             ctx.stroke();
 
-            // Propeller fan behind
             ctx.fillStyle = '#808080';
             ctx.beginPath();
             ctx.arc(0, -20, 20, 0, Math.PI * 2);
             ctx.fill();
-            // Blades
             ctx.strokeStyle = '#000';
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -596,21 +628,17 @@
             ctx.lineTo(20, -20);
             ctx.stroke();
 
-            // Engine box
             ctx.fillStyle = '#696969';
             ctx.fillRect(-15, -15, 30, 20);
 
-            // Fighter body
             ctx.fillStyle = '#556B2F';
             ctx.fillRect(-8, 10, 16, 30);
 
-            // Head
             ctx.fillStyle = '#D2B48C';
             ctx.beginPath();
             ctx.arc(0, 0, 8, 0, Math.PI * 2);
             ctx.fill();
 
-            // Keffiyeh - black and white checkered pattern
             ctx.fillStyle = '#000';
             ctx.beginPath();
             ctx.moveTo(-10, -5);
@@ -628,7 +656,6 @@
             }
             ctx.stroke();
 
-            // Weapon
             ctx.fillStyle = '#333';
             ctx.fillRect(5, 15, 25, 3);
             ctx.fillRect(20, 12, 5, 6);
@@ -640,10 +667,44 @@
             for (const b of bullets) {
                 const sx = b.x - cameraX;
                 const sy = b.y;
-                ctx.fillStyle = b.color;
-                ctx.beginPath();
-                ctx.arc(sx, sy, b.size / 2, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.save();
+                if (b.type === 'laser') {
+                    // Draw as beam with glow
+                    ctx.strokeStyle = b.color;
+                    ctx.shadowColor = b.color;
+                    ctx.shadowBlur = 5;
+                    ctx.lineWidth = b.size / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    b.trail.forEach(t => {
+                        ctx.lineTo(t.x - cameraX, t.y);
+                    });
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                } else if (b.type === 'rocket') {
+                    // Draw rocket shape with trail
+                    ctx.fillStyle = '#888';
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(sx - 10, sy - 3);
+                    ctx.lineTo(sx - 10, sy + 3);
+                    ctx.fill();
+                    ctx.strokeStyle = '#FF8C00';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(sx - 10, sy);
+                    b.trail.forEach(t => {
+                        ctx.lineTo(t.x - cameraX - 10, t.y);
+                    });
+                    ctx.stroke();
+                } else {
+                    // Simple bullet
+                    ctx.fillStyle = b.color;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, b.size / 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                ctx.restore();
             }
         }
 
