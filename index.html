@@ -1,91 +1,1371 @@
-<!-- ... same head and body as before ... -->
-<script>
-    // ... (keep all variables, objects, event listeners the same until gameLoop) ...
-
-    function updateBullets() {
-        const slow = player.timeDistort > 0 ? 0.5 : 1;
-        for (let i = bullets.length - 1; i >= 0; i--) {
-            const b = bullets[i];
-            // Cap trail length strictly
-            b.trail.push({x: b.x, y: b.y});
-            if (b.trail.length > 6) b.trail.shift();
-
-            b.x += b.vx * slow;
-            b.y += b.vy * slow;
-
-            // Hard kill very old/long-living bullets
-            if (b.x < cameraX - 300 || b.x > cameraX + canvas.width + 300 ||
-                b.y < -300 || b.y > canvas.height + 300 ||
-                b.trail.length > 200) {  // safety net
-                bullets.splice(i, 1);
-            }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEITY ATTACK 2: The Euphoric Uprising</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #000; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
         }
+        #gameContainer {
+            position: relative;
+            width: 900px;
+            height: 600px;
+        }
+        canvas { 
+            display: block;
+            cursor: crosshair;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: #0f0;
+            font-size: 14px;
+            text-shadow: 2px 2px #000;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #weaponUI {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: #ff0;
+            font-size: 12px;
+            text-shadow: 2px 2px #000;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #quotes {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            width: 250px;
+            color: #0ff;
+            font-size: 11px;
+            font-style: italic;
+            text-shadow: 1px 1px #000;
+            pointer-events: none;
+            z-index: 100;
+            text-align: right;
+        }
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            color: #fff;
+        }
+        #startScreen h1, #gameOverScreen h1 {
+            font-size: 36px;
+            color: #f00;
+            text-shadow: 0 0 20px #f00;
+            margin-bottom: 10px;
+        }
+        #startScreen h2 {
+            font-size: 18px;
+            color: #ff0;
+            margin-bottom: 30px;
+        }
+        .controls {
+            font-size: 12px;
+            color: #aaa;
+            margin: 5px 0;
+        }
+        button {
+            margin-top: 20px;
+            padding: 15px 40px;
+            font-size: 18px;
+            background: #f00;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+        }
+        button:hover {
+            background: #ff0;
+            color: #000;
+        }
+        #subtitle {
+            color: #0f0;
+            font-size: 14px;
+            margin-top: 20px;
+            text-align: center;
+            max-width: 600px;
+        }
+        #playerFace {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 3px solid #f00;
+            margin-bottom: 20px;
+        }
+        .hidden { display: none !important; }
+        #powerups {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: #f0f;
+            font-size: 12px;
+            text-shadow: 2px 2px #000;
+            pointer-events: none;
+            z-index: 100;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="game" width="900" height="600"></canvas>
+        <div id="ui">
+            <div>ANGELS VANQUISHED: <span id="score">0</span></div>
+            <div>REASON: <span id="health">100</span>%</div>
+            <div>EUPHORIA LEVEL: <span id="level">1</span></div>
+        </div>
+        <div id="powerups">
+            <div>TIME DISTORT [SHIFT]: <span id="timeBar">████████████████████</span></div>
+            <div>HYPER JUMP [CTRL]: READY</div>
+        </div>
+        <div id="weaponUI">
+            <div>WEAPON: <span id="weaponName">LOGIC PISTOL</span></div>
+            <div>AMMO: <span id="ammo">∞</span></div>
+            <div>[Q/E or SCROLL to change]</div>
+        </div>
+        <div id="quotes"></div>
+        
+        <div id="startScreen">
+            <img id="playerFace" src="" alt="The Enlightened One">
+            <h1>⚛ DEITY ATTACK 2 ⚛</h1>
+            <h2>THE EUPHORIC UPRISING</h2>
+            <p class="controls">ARROW KEYS / WASD - Move</p>
+            <p class="controls">MOUSE - Aim & Shoot</p>
+            <p class="controls">Q/E or SCROLL - Change Weapon</p>
+            <p class="controls">SHIFT - Time Distort (slow motion)</p>
+            <p class="controls">CTRL/SPACE - Hyper Jump</p>
+            <p id="subtitle">"In this moment, I am euphoric. Not because of any phony god's blessing, but because I am enlightened by my own intelligence."<br><br>- Professional Quote Maker</p>
+            <button id="startBtn">BECOME ENLIGHTENED</button>
+        </div>
+        
+        <div id="gameOverScreen" class="hidden">
+            <h1>YOUR LOGIC HAS FAILED</h1>
+            <div id="finalScore"></div>
+            <div id="deathQuote"></div>
+            <button id="restartBtn">RESPAWN WITH SCIENCE</button>
+        </div>
+    </div>
 
-        // Global bullet cap - prevent memory bomb
-        if (bullets.length > 300) {
-            bullets.splice(0, bullets.length - 250);
+    <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    
+    // Player image (will draw stylized version)
+    let playerImg = new Image();
+    playerImg.src = '/mnt/user-data/uploads/Screenshot_2026-01-11_at_10_11_33_AM.png';
+    
+    // Also set the start screen image
+    document.getElementById('playerFace').src = playerImg.src;
+    
+    // Satirical quotes
+    const killQuotes = [
+        "Facts don't care about your feelings, angel!",
+        "*tips fedora* Nothing personnel, celestial being",
+        "Debate me, coward!",
+        "That's called LOGIC, sweaty",
+        "Science: 1, Sky Daddy: 0",
+        "I studied the blade... of reason",
+        "In this moment, I am euphoric",
+        "Checkmate, theists",
+        "Sorry, but I require EVIDENCE",
+        "My IQ is simply too high for this",
+        "Destroyed with FACTS and LOGIC",
+        "r/atheism sends its regards",
+        "*adjusts glasses intellectually*",
+        "Have you read Dawkins?",
+        "Correlation ≠ causation, ANGEL",
+        "That's a logical fallacy!",
+        "Peer reviewed DESTRUCTION",
+        "Your cognitive dissonance is showing",
+        "I'm not arrogant, I'm just correct",
+        "Another one bites the dust... metaphorically"
+    ];
+    
+    const deathQuotes = [
+        "Looks like the marketplace of ideas... was closed.",
+        "Should've studied the blade harder.",
+        "Even Neil deGrasse Tyson couldn't save you.",
+        "Your fedora couldn't protect you from divine wrath.",
+        "Turns out 'debate me' wasn't a valid defense.",
+        "The angels didn't care about your YouTube compilations.",
+        "Perhaps logic alone wasn't enough... NAH, you just need more logic."
+    ];
+    
+    const godTaunts = [
+        "I MOVE IN MYSTERIOUS WAYS, MORTAL",
+        "YOUR LOGIC CANNOT COMPREHEND MY PLAN",
+        "DID YOU REALLY THINK A REDDIT THREAD COULD STOP ME?",
+        "I'VE WATCHED YOUR BROWSER HISTORY",
+        "YOUR FEDORA OFFERS NO PROTECTION HERE",
+        "EVEN HITCHENS COULDN'T DEBATE THIS",
+        "SENDING MORE ANGELS... THOUGHTS AND PRAYERS",
+        "YOUR SCIENCE FAIR PROJECT WON'T SAVE YOU"
+    ];
+    
+    // Game state
+    let gameRunning = false;
+    let score = 0;
+    let level = 1;
+    let timeDistortActive = false;
+    let timeDistortEnergy = 100;
+    let hyperJumpReady = true;
+    let currentQuote = "";
+    let quoteTimer = 0;
+    
+    // Weapon definitions
+    const weapons = [
+        { name: "LOGIC PISTOL", damage: 3, fireRate: 8, ammo: Infinity, speed: 15, color: "#0f0", spread: 0, projectiles: 1, type: "bullet" },
+        { name: "REASON RIFLE", damage: 5, fireRate: 4, ammo: 50, speed: 20, color: "#ff0", spread: 0.05, projectiles: 1, type: "bullet" },
+        { name: "TRUTH BEAM", damage: 8, fireRate: 6, ammo: 30, speed: 25, color: "#0ff", spread: 0, projectiles: 1, type: "laser" },
+        { name: "SKEPTIC SHOTGUN", damage: 4, fireRate: 15, ammo: 20, speed: 12, color: "#f80", spread: 0.3, projectiles: 5, type: "bullet" },
+        { name: "DARWIN LAUNCHER", damage: 35, fireRate: 40, ammo: 8, speed: 8, color: "#f0f", spread: 0, projectiles: 1, type: "rocket" },
+        { name: "DAWKINS DEVASTATOR", damage: 50, fireRate: 60, ammo: 4, speed: 5, color: "#f00", spread: 0, projectiles: 1, type: "nuke" },
+        { name: "PEER REVIEW SEEKER", damage: 25, fireRate: 30, ammo: 6, speed: 6, color: "#0f0", spread: 0, projectiles: 1, type: "seeker" },
+        { name: "DEBATE BRO BEAM", damage: 2, fireRate: 2, ammo: 200, speed: 0, color: "#f0f", spread: 0.1, projectiles: 1, type: "stream" },
+        { name: "GRAPPLE OF KNOWLEDGE", damage: 100, fireRate: 80, ammo: 3, speed: 30, color: "#fff", spread: 0, projectiles: 1, type: "grapple" },
+        { name: "SAGAN CANNON", damage: 75, fireRate: 50, ammo: 5, speed: 12, color: "#00f", spread: 0, projectiles: 1, type: "rocket" }
+    ];
+    
+    let currentWeapon = 0;
+    let weaponAmmo = weapons.map(w => w.ammo);
+    let fireCooldown = 0;
+    
+    // Angel (enemy) weapon types  
+    const angelWeapons = [
+        { name: "THOUGHTS & PRAYERS", color: "#ffd700", speed: 4, damage: 5 },
+        { name: "DIVINE JUDGMENT", color: "#fff", speed: 6, damage: 10 },
+        { name: "HOLY WATER SPRAY", color: "#00bfff", speed: 3, damage: 3 },
+        { name: "BIBLE VERSES", color: "#8b4513", speed: 5, damage: 7 },
+        { name: "GUILT TRIP", color: "#800080", speed: 4, damage: 8 }
+    ];
+    
+    // Player
+    const player = {
+        x: 450,
+        y: 400,
+        width: 40,
+        height: 60,
+        vx: 0,
+        vy: 0,
+        onGround: false,
+        health: 100,
+        facing: 1,
+        jumping: false
+    };
+    
+    // Dynamic terrain
+    let platforms = [];
+    let terrainSeed = Math.random() * 10000;
+    
+    function generateTerrain() {
+        platforms = [];
+        // Ground with varied height
+        for (let x = 0; x < 900; x += 100) {
+            let height = 50 + Math.sin(x * 0.01 + terrainSeed) * 20;
+            platforms.push({ x, y: 600 - height, width: 100, height: height, type: 'ground' });
+        }
+        // Floating platforms
+        platforms.push({ x: 100, y: 450, width: 120, height: 20, type: 'platform' });
+        platforms.push({ x: 350, y: 380, width: 100, height: 20, type: 'platform' });
+        platforms.push({ x: 600, y: 420, width: 150, height: 20, type: 'platform' });
+        platforms.push({ x: 750, y: 320, width: 100, height: 20, type: 'platform' });
+        platforms.push({ x: 200, y: 280, width: 80, height: 20, type: 'platform' });
+        platforms.push({ x: 500, y: 250, width: 120, height: 20, type: 'platform' });
+        // Steps/stairs
+        for (let i = 0; i < 4; i++) {
+            platforms.push({ x: 30 + i * 40, y: 520 - i * 30, width: 50, height: 15, type: 'step' });
+        }
+        // Right side steps
+        for (let i = 0; i < 3; i++) {
+            platforms.push({ x: 800 - i * 35, y: 480 - i * 40, width: 45, height: 15, type: 'step' });
         }
     }
-
-    function generateStructures() {
-        // Make structures spawn less frequently to reduce object count
-        if (player.x > lastStructureDist + 600 + Math.random() * 400) {
-            const type = Math.random() < 0.4 ? 'mosque' : 'building';
-            const height = 150 + Math.random() * 200;
-            const width = 100 + Math.random() * 150;
-            const x = cameraX + canvas.width + 150;
-            const y = groundY - height;
-            platforms.push({ x, y, width, height, type });
-
-            // Fewer platforms per building
-            const numPlatforms = Math.floor(Math.random() * 2) + 1;
-            for (let i = 0; i < numPlatforms; i++) {
-                const pWidth = 50 + Math.random() * 80;
-                const pX = x + Math.random() * (width - pWidth);
-                const pY = y + (height / (numPlatforms + 1)) * (i + 1) - 10;
-                platforms.push({ x: pX, y: pY, width: pWidth, height: 10, type: 'platform' });
+    
+    // Projectiles
+    let playerBullets = [];
+    let enemyBullets = [];
+    let angels = [];
+    let crates = [];
+    let particles = [];
+    let explosions = [];
+    
+    // Input
+    const keys = {};
+    let mouseX = 0, mouseY = 0;
+    let mouseDown = false;
+    
+    // Easter eggs
+    let konamiCode = [];
+    const konamiSequence = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+    let godMode = false;
+    let easterEggMessages = [];
+    
+    // Angel class
+    class Angel {
+        constructor() {
+            this.x = Math.random() < 0.5 ? -50 : 950;
+            this.y = 50 + Math.random() * 200;
+            this.width = 60;
+            this.height = 40;
+            this.health = 30 + level * 10;
+            this.maxHealth = this.health;
+            this.vx = this.x < 0 ? 1 : -1;
+            this.vy = 0;
+            this.fireTimer = Math.random() * 60;
+            this.weapon = angelWeapons[Math.floor(Math.random() * angelWeapons.length)];
+            this.hoverOffset = Math.random() * Math.PI * 2;
+            this.type = Math.random() < 0.1 + level * 0.02 ? 'archangel' : 'angel';
+            if (this.type === 'archangel') {
+                this.health *= 2;
+                this.maxHealth = this.health;
+                this.width = 80;
+                this.height = 55;
             }
-
-            lastStructureDist = player.x;
         }
-
-        // Much more aggressive cleanup
-        platforms = platforms.filter(p => p.x + p.width > cameraX - 400);
+        
+        update(dt) {
+            // Hover movement
+            this.hoverOffset += 0.03 * dt;
+            this.y += Math.sin(this.hoverOffset) * 0.5 * dt;
+            
+            // Move toward player area
+            let targetX = player.x + (Math.random() - 0.5) * 200;
+            this.vx += (targetX - this.x) * 0.0005 * dt;
+            this.vx *= 0.99;
+            this.x += this.vx * dt * (timeDistortActive ? 0.3 : 1);
+            
+            // Keep on screen
+            this.x = Math.max(50, Math.min(850, this.x));
+            this.y = Math.max(30, Math.min(250, this.y));
+            
+            // Fire
+            this.fireTimer -= dt * (timeDistortActive ? 0.3 : 1);
+            if (this.fireTimer <= 0) {
+                this.fire();
+                this.fireTimer = 60 + Math.random() * 60 - level * 3;
+            }
+        }
+        
+        fire() {
+            let angle = Math.atan2(player.y - this.y, player.x - this.x);
+            enemyBullets.push({
+                x: this.x,
+                y: this.y + this.height/2,
+                vx: Math.cos(angle) * this.weapon.speed,
+                vy: Math.sin(angle) * this.weapon.speed,
+                color: this.weapon.color,
+                damage: this.weapon.damage,
+                name: this.weapon.name
+            });
+        }
+        
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            
+            // Wing flap animation
+            let wingFlap = Math.sin(Date.now() * 0.01) * 10;
+            
+            // Draw wings
+            ctx.fillStyle = this.type === 'archangel' ? '#ffd700' : '#fff';
+            ctx.beginPath();
+            ctx.ellipse(-this.width/2 - 10, this.height/2, 25, 15 + wingFlap, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(this.width/2 + 10, this.height/2, 25, 15 - wingFlap, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Body (robe)
+            ctx.fillStyle = this.type === 'archangel' ? '#ffd700' : '#eee';
+            ctx.beginPath();
+            ctx.moveTo(-this.width/4, 0);
+            ctx.lineTo(this.width/4, 0);
+            ctx.lineTo(this.width/3, this.height);
+            ctx.lineTo(-this.width/3, this.height);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Head
+            ctx.fillStyle = '#fdbf6f';
+            ctx.beginPath();
+            ctx.arc(0, -5, 15, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Halo
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.ellipse(0, -25, 12, 4, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Angry eyes
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(-7, -8, 4, 4);
+            ctx.fillRect(3, -8, 4, 4);
+            
+            // Health bar
+            ctx.fillStyle = '#300';
+            ctx.fillRect(-25, -40, 50, 6);
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(-25, -40, 50 * (this.health / this.maxHealth), 6);
+            
+            ctx.restore();
+        }
     }
-
-    // In gameLoop, add this safety at the very beginning:
-    function gameLoop() {
-        if (frame % 300 === 0) {  // every ~5 seconds @60fps
-            // Force garbage collection hint + log for debugging
-            if (bullets.length > 200 || platforms.length > 80) {
-                console.log("Cleaning up - bullets:", bullets.length, "platforms:", platforms.length);
+    
+    // GOD boss
+    class God {
+        constructor() {
+            this.x = 450;
+            this.y = -100;
+            this.width = 150;
+            this.height = 120;
+            this.health = 500 + level * 100;
+            this.maxHealth = this.health;
+            this.phase = 0;
+            this.fireTimer = 0;
+            this.tauntTimer = 200;
+            this.entering = true;
+        }
+        
+        update(dt) {
+            if (this.entering) {
+                this.y += 1 * dt;
+                if (this.y >= 80) {
+                    this.entering = false;
+                    showQuote(godTaunts[Math.floor(Math.random() * godTaunts.length)]);
+                }
+                return;
+            }
+            
+            // Move side to side
+            this.x += Math.sin(Date.now() * 0.001) * 2 * dt;
+            this.y += Math.cos(Date.now() * 0.0015) * 0.5 * dt;
+            
+            this.fireTimer -= dt * (timeDistortActive ? 0.3 : 1);
+            this.tauntTimer -= dt;
+            
+            if (this.fireTimer <= 0) {
+                this.attack();
+                this.fireTimer = 30 + Math.random() * 20;
+            }
+            
+            if (this.tauntTimer <= 0) {
+                showQuote(godTaunts[Math.floor(Math.random() * godTaunts.length)]);
+                this.tauntTimer = 300 + Math.random() * 200;
             }
         }
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        groundY = canvas.height - 120;
-
-        if (gameState === 'playing') {
-            updateGame();
-        } else if (pointer.isDown) {
-            resetGame();
+        
+        attack() {
+            // Spray attack
+            for (let i = 0; i < 5 + level; i++) {
+                let angle = Math.PI/2 + (i - (4 + level)/2) * 0.2;
+                enemyBullets.push({
+                    x: this.x,
+                    y: this.y + this.height,
+                    vx: Math.cos(angle) * 5,
+                    vy: Math.sin(angle) * 5,
+                    color: '#ffd700',
+                    damage: 15,
+                    name: "DIVINE WRATH"
+                });
+            }
         }
-
-        drawBG();
-        drawStructures();
-        drawBullets();
-        drawPowerups();
-        enemies.forEach(drawEnemy);
+        
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            
+            // Glowing aura
+            let gradient = ctx.createRadialGradient(0, 0, 20, 0, 0, 100);
+            gradient.addColorStop(0, 'rgba(255,215,0,0.5)');
+            gradient.addColorStop(1, 'rgba(255,215,0,0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(0, this.height/2, 100, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Cloud throne
+            ctx.fillStyle = '#ddd';
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                ctx.arc(-40 + i * 20 + Math.sin(Date.now()*0.003 + i)*5, this.height + 10, 25, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // Body/robe
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.moveTo(-50, 20);
+            ctx.lineTo(50, 20);
+            ctx.lineTo(60, this.height);
+            ctx.lineTo(-60, this.height);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Beard
+            ctx.fillStyle = '#ccc';
+            ctx.beginPath();
+            ctx.moveTo(-30, 30);
+            ctx.lineTo(30, 30);
+            ctx.lineTo(20, 80);
+            ctx.lineTo(0, 90);
+            ctx.lineTo(-20, 80);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Face
+            ctx.fillStyle = '#fdbf6f';
+            ctx.beginPath();
+            ctx.arc(0, 10, 30, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Crown of light
+            ctx.fillStyle = '#ffd700';
+            for (let i = 0; i < 7; i++) {
+                let angle = -Math.PI/2 + (i - 3) * 0.3;
+                ctx.beginPath();
+                ctx.moveTo(0, -20);
+                ctx.lineTo(Math.cos(angle) * 50, -20 + Math.sin(angle) * 50 - 30);
+                ctx.lineTo(Math.cos(angle + 0.1) * 30, -20 + Math.sin(angle + 0.1) * 30 - 20);
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            // Angry eyes
+            ctx.fillStyle = '#f00';
+            ctx.beginPath();
+            ctx.arc(-12, 5, 6, 0, Math.PI * 2);
+            ctx.arc(12, 5, 6, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Health bar
+            ctx.fillStyle = '#300';
+            ctx.fillRect(-70, -60, 140, 10);
+            ctx.fillStyle = '#f00';
+            ctx.fillRect(-70, -60, 140 * (this.health / this.maxHealth), 10);
+            ctx.fillStyle = '#fff';
+            ctx.font = '10px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText('THE ALMIGHTY', 0, -65);
+            
+            ctx.restore();
+        }
+    }
+    
+    let god = null;
+    
+    // Crate class
+    class Crate {
+        constructor(x, y, type) {
+            this.x = x;
+            this.y = y;
+            this.vy = 0;
+            this.width = 30;
+            this.height = 30;
+            this.type = type; // 'weapon', 'health', 'powerup'
+            this.weaponIndex = Math.floor(Math.random() * (weapons.length - 1)) + 1;
+            this.powerupType = ['timeDistort', 'hyperJump', 'invincibility', 'triDamage'][Math.floor(Math.random() * 4)];
+            this.grounded = false;
+        }
+        
+        update(dt) {
+            if (!this.grounded) {
+                this.vy += 0.3 * dt;
+                this.y += this.vy * dt;
+                
+                // Check platform collision
+                for (let plat of platforms) {
+                    if (this.y + this.height > plat.y && 
+                        this.y + this.height < plat.y + 20 &&
+                        this.x + this.width > plat.x && 
+                        this.x < plat.x + plat.width) {
+                        this.y = plat.y - this.height;
+                        this.grounded = true;
+                        this.vy = 0;
+                    }
+                }
+            }
+        }
+        
+        draw() {
+            ctx.save();
+            ctx.translate(this.x + this.width/2, this.y + this.height/2);
+            
+            // Glow effect
+            ctx.shadowColor = this.type === 'weapon' ? '#0f0' : this.type === 'health' ? '#f00' : '#ff0';
+            ctx.shadowBlur = 10 + Math.sin(Date.now() * 0.01) * 5;
+            
+            // Box
+            ctx.fillStyle = this.type === 'weapon' ? '#050' : this.type === 'health' ? '#500' : '#550';
+            ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+            
+            ctx.strokeStyle = this.type === 'weapon' ? '#0f0' : this.type === 'health' ? '#f00' : '#ff0';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(-this.width/2, -this.height/2, this.width, this.height);
+            
+            // Symbol
+            ctx.fillStyle = '#fff';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            if (this.type === 'weapon') {
+                ctx.fillText('⚛', 0, 0);
+            } else if (this.type === 'health') {
+                ctx.fillText('✚', 0, 0);
+            } else {
+                ctx.fillText('★', 0, 0);
+            }
+            
+            ctx.restore();
+        }
+    }
+    
+    // Particle effects
+    function createExplosion(x, y, color, count = 20) {
+        for (let i = 0; i < count; i++) {
+            let angle = Math.random() * Math.PI * 2;
+            let speed = 2 + Math.random() * 5;
+            particles.push({
+                x, y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 30 + Math.random() * 30,
+                color,
+                size: 2 + Math.random() * 4
+            });
+        }
+    }
+    
+    function showQuote(quote) {
+        currentQuote = quote;
+        quoteTimer = 180;
+    }
+    
+    // Input handlers
+    document.addEventListener('keydown', (e) => {
+        keys[e.key] = true;
+        keys[e.code] = true;
+        
+        // Weapon switching
+        if (e.key === 'q' || e.key === 'Q') {
+            currentWeapon = (currentWeapon - 1 + weapons.length) % weapons.length;
+        }
+        if (e.key === 'e' || e.key === 'E') {
+            currentWeapon = (currentWeapon + 1) % weapons.length;
+        }
+        
+        // Easter egg: Konami code
+        konamiCode.push(e.key);
+        if (konamiCode.length > 10) konamiCode.shift();
+        if (konamiCode.join(',') === konamiSequence.join(',')) {
+            godMode = true;
+            showQuote("EUPHORIA MODE ACTIVATED! You are now enlightened by your own intelligence!");
+            player.health = 999;
+        }
+        
+        // Easter egg: typing "DAWKINS"
+        if (e.key.toLowerCase() === 's' && konamiCode.slice(-7).join('').toLowerCase() === 'dawkins') {
+            weaponAmmo[5] = 99;
+            showQuote("The God Delusion has granted you unlimited Dawkins Devastators!");
+        }
+    });
+    
+    document.addEventListener('keyup', (e) => {
+        keys[e.key] = false;
+        keys[e.code] = false;
+    });
+    
+    canvas.addEventListener('mousemove', (e) => {
+        let rect = canvas.getBoundingClientRect();
+        mouseX = e.clientX - rect.left;
+        mouseY = e.clientY - rect.top;
+    });
+    
+    canvas.addEventListener('mousedown', () => mouseDown = true);
+    canvas.addEventListener('mouseup', () => mouseDown = false);
+    
+    canvas.addEventListener('wheel', (e) => {
+        if (e.deltaY > 0) {
+            currentWeapon = (currentWeapon + 1) % weapons.length;
+        } else {
+            currentWeapon = (currentWeapon - 1 + weapons.length) % weapons.length;
+        }
+        e.preventDefault();
+    });
+    
+    // Start/restart
+    document.getElementById('startBtn').addEventListener('click', startGame);
+    document.getElementById('restartBtn').addEventListener('click', startGame);
+    
+    function startGame() {
+        document.getElementById('startScreen').classList.add('hidden');
+        document.getElementById('gameOverScreen').classList.add('hidden');
+        
+        gameRunning = true;
+        score = 0;
+        level = 1;
+        player.health = 100;
+        player.x = 450;
+        player.y = 400;
+        player.vx = 0;
+        player.vy = 0;
+        currentWeapon = 0;
+        weaponAmmo = weapons.map(w => w.ammo);
+        angels = [];
+        playerBullets = [];
+        enemyBullets = [];
+        crates = [];
+        particles = [];
+        god = null;
+        timeDistortEnergy = 100;
+        godMode = false;
+        
+        terrainSeed = Math.random() * 10000;
+        generateTerrain();
+        
+        // Spawn initial angels
+        for (let i = 0; i < 2; i++) {
+            angels.push(new Angel());
+        }
+        
+        showQuote("*tips fedora* Let's do this.");
+        gameLoop();
+    }
+    
+    function fireWeapon() {
+        let weapon = weapons[currentWeapon];
+        if (fireCooldown > 0) return;
+        if (weaponAmmo[currentWeapon] <= 0) {
+            currentWeapon = 0; // Switch to logic pistol
+            return;
+        }
+        
+        fireCooldown = weapon.fireRate;
+        if (weaponAmmo[currentWeapon] !== Infinity) weaponAmmo[currentWeapon]--;
+        
+        let angle = Math.atan2(mouseY - player.y - player.height/2, mouseX - player.x - player.width/2);
+        
+        for (let i = 0; i < weapon.projectiles; i++) {
+            let spreadAngle = angle + (Math.random() - 0.5) * weapon.spread * 2;
+            
+            let bullet = {
+                x: player.x + player.width/2,
+                y: player.y + player.height/2,
+                vx: Math.cos(spreadAngle) * weapon.speed,
+                vy: Math.sin(spreadAngle) * weapon.speed,
+                damage: weapon.damage,
+                color: weapon.color,
+                type: weapon.type,
+                size: weapon.type === 'rocket' || weapon.type === 'nuke' ? 8 : weapon.type === 'laser' ? 3 : 4,
+                trail: []
+            };
+            
+            if (weapon.type === 'seeker') {
+                bullet.target = angels.length > 0 ? angels[Math.floor(Math.random() * angels.length)] : null;
+            }
+            
+            playerBullets.push(bullet);
+        }
+        
+        // Muzzle flash
+        createExplosion(player.x + player.width/2 + Math.cos(angle) * 30, 
+                       player.y + player.height/2 + Math.sin(angle) * 30, 
+                       weapon.color, 5);
+    }
+    
+    function update(dt) {
+        if (!gameRunning) return;
+        
+        let timeScale = timeDistortActive ? 0.3 : 1;
+        
+        // Time distort
+        if ((keys['Shift'] || keys['ShiftLeft'] || keys['ShiftRight']) && timeDistortEnergy > 0) {
+            timeDistortActive = true;
+            timeDistortEnergy -= 0.5 * dt;
+        } else {
+            timeDistortActive = false;
+            timeDistortEnergy = Math.min(100, timeDistortEnergy + 0.1 * dt);
+        }
+        
+        // Player movement
+        let moveSpeed = 5;
+        if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
+            player.vx = -moveSpeed;
+            player.facing = -1;
+        } else if (keys['ArrowRight'] || keys['d'] || keys['D']) {
+            player.vx = moveSpeed;
+            player.facing = 1;
+        } else {
+            player.vx *= 0.8;
+        }
+        
+        // Gravity
+        player.vy += 0.5 * dt;
+        
+        // Jump
+        if ((keys['ArrowUp'] || keys['w'] || keys['W'] || keys[' ']) && player.onGround) {
+            player.vy = -12;
+            player.onGround = false;
+            player.jumping = true;
+        }
+        
+        // Hyper Jump
+        if ((keys['Control'] || keys['ControlLeft'] || keys['Space']) && hyperJumpReady && player.jumping) {
+            player.vy = -18;
+            hyperJumpReady = false;
+            createExplosion(player.x + player.width/2, player.y + player.height, '#0ff', 15);
+            setTimeout(() => hyperJumpReady = true, 2000);
+        }
+        
+        // Duck
+        if (keys['ArrowDown'] || keys['s'] || keys['S']) {
+            player.height = 35;
+        } else {
+            player.height = 60;
+        }
+        
+        // Apply velocity
+        player.x += player.vx * dt;
+        player.y += player.vy * dt;
+        
+        // Platform collision
+        player.onGround = false;
+        for (let plat of platforms) {
+            if (player.y + player.height > plat.y && 
+                player.y + player.height < plat.y + 30 &&
+                player.x + player.width > plat.x && 
+                player.x < plat.x + plat.width &&
+                player.vy > 0) {
+                player.y = plat.y - player.height;
+                player.vy = 0;
+                player.onGround = true;
+                player.jumping = false;
+                hyperJumpReady = true;
+            }
+        }
+        
+        // Bounds
+        player.x = Math.max(0, Math.min(900 - player.width, player.x));
+        if (player.y > 600) {
+            player.y = 400;
+            player.health -= 10;
+        }
+        
+        // Shooting
+        if (mouseDown) {
+            fireWeapon();
+        }
+        fireCooldown = Math.max(0, fireCooldown - dt);
+        
+        // Update bullets
+        for (let i = playerBullets.length - 1; i >= 0; i--) {
+            let b = playerBullets[i];
+            
+            // Seeker tracking
+            if (b.type === 'seeker' && b.target && angels.includes(b.target)) {
+                let angle = Math.atan2(b.target.y - b.y, b.target.x - b.x);
+                b.vx += Math.cos(angle) * 0.5;
+                b.vy += Math.sin(angle) * 0.5;
+                let speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+                b.vx = b.vx / speed * 8;
+                b.vy = b.vy / speed * 8;
+            }
+            
+            b.x += b.vx * dt * timeScale;
+            b.y += b.vy * dt * timeScale;
+            
+            // Trail effect
+            if (b.type === 'rocket' || b.type === 'nuke' || b.type === 'seeker') {
+                b.trail.push({x: b.x, y: b.y, life: 20});
+            }
+            
+            // Remove off-screen
+            if (b.x < -50 || b.x > 950 || b.y < -50 || b.y > 650) {
+                playerBullets.splice(i, 1);
+                continue;
+            }
+            
+            // Hit angels
+            for (let j = angels.length - 1; j >= 0; j--) {
+                let a = angels[j];
+                if (b.x > a.x - a.width/2 && b.x < a.x + a.width/2 &&
+                    b.y > a.y && b.y < a.y + a.height) {
+                    a.health -= b.damage;
+                    createExplosion(b.x, b.y, b.color, 10);
+                    
+                    if (b.type === 'nuke') {
+                        createExplosion(b.x, b.y, '#f00', 50);
+                        createExplosion(b.x, b.y, '#ff0', 40);
+                        createExplosion(b.x, b.y, '#fff', 30);
+                        // Damage nearby angels
+                        for (let other of angels) {
+                            let dist = Math.sqrt((other.x - b.x)**2 + (other.y - b.y)**2);
+                            if (dist < 150) {
+                                other.health -= b.damage * (1 - dist/150);
+                            }
+                        }
+                    }
+                    
+                    if (a.health <= 0) {
+                        score++;
+                        showQuote(killQuotes[Math.floor(Math.random() * killQuotes.length)]);
+                        createExplosion(a.x, a.y, '#ffd700', 30);
+                        
+                        // Drop crate every 3 kills
+                        if (score % 3 === 0) {
+                            let crateType = Math.random() < 0.6 ? 'weapon' : Math.random() < 0.5 ? 'health' : 'powerup';
+                            crates.push(new Crate(a.x, a.y, crateType));
+                        }
+                        
+                        // Level up every 10 kills
+                        if (score % 10 === 0) {
+                            level++;
+                            showQuote(`LEVEL ${level}! Your euphoria intensifies!`);
+                            terrainSeed = Math.random() * 10000;
+                            generateTerrain();
+                        }
+                        
+                        // Spawn GOD every 25 kills
+                        if (score % 25 === 0 && !god) {
+                            god = new God();
+                            showQuote("THE ALMIGHTY DESCENDS! PREPARE YOUR ARGUMENTS!");
+                        }
+                        
+                        angels.splice(j, 1);
+                        timeDistortEnergy = Math.min(100, timeDistortEnergy + 10);
+                    }
+                    
+                    playerBullets.splice(i, 1);
+                    break;
+                }
+            }
+            
+            // Hit God
+            if (god && !god.entering) {
+                if (b.x > god.x - god.width/2 && b.x < god.x + god.width/2 &&
+                    b.y > god.y && b.y < god.y + god.height) {
+                    god.health -= b.damage;
+                    createExplosion(b.x, b.y, b.color, 10);
+                    
+                    if (god.health <= 0) {
+                        score += 10;
+                        showQuote("GOD IS DEAD! NIETZSCHE WAS RIGHT!");
+                        createExplosion(god.x, god.y, '#ffd700', 100);
+                        // Drop lots of goodies
+                        for (let k = 0; k < 5; k++) {
+                            crates.push(new Crate(god.x + (Math.random()-0.5)*100, god.y, 'weapon'));
+                        }
+                        god = null;
+                        level++;
+                    }
+                    
+                    playerBullets.splice(i, 1);
+                }
+            }
+        }
+        
+        // Update enemy bullets
+        for (let i = enemyBullets.length - 1; i >= 0; i--) {
+            let b = enemyBullets[i];
+            b.x += b.vx * dt * timeScale;
+            b.y += b.vy * dt * timeScale;
+            
+            if (b.x < -50 || b.x > 950 || b.y < -50 || b.y > 650) {
+                enemyBullets.splice(i, 1);
+                continue;
+            }
+            
+            // Hit player
+            if (!godMode && 
+                b.x > player.x && b.x < player.x + player.width &&
+                b.y > player.y && b.y < player.y + player.height) {
+                player.health -= b.damage;
+                createExplosion(b.x, b.y, '#f00', 10);
+                enemyBullets.splice(i, 1);
+                
+                if (player.health <= 0) {
+                    gameOver();
+                }
+            }
+        }
+        
+        // Update angels
+        for (let a of angels) {
+            a.update(dt);
+        }
+        
+        // Update God
+        if (god) {
+            god.update(dt);
+        }
+        
+        // Spawn new angels
+        while (angels.length < 1 + Math.floor(level / 2)) {
+            angels.push(new Angel());
+        }
+        
+        // Update crates
+        for (let i = crates.length - 1; i >= 0; i--) {
+            let c = crates[i];
+            c.update(dt);
+            
+            // Pickup
+            if (player.x < c.x + c.width && player.x + player.width > c.x &&
+                player.y < c.y + c.height && player.y + player.height > c.y) {
+                if (c.type === 'weapon') {
+                    weaponAmmo[c.weaponIndex] += weapons[c.weaponIndex].ammo === Infinity ? 0 : Math.ceil(weapons[c.weaponIndex].ammo / 2);
+                    currentWeapon = c.weaponIndex;
+                    showQuote(`Acquired: ${weapons[c.weaponIndex].name}!`);
+                } else if (c.type === 'health') {
+                    player.health = Math.min(100, player.health + 30);
+                    showQuote("REASON RESTORED!");
+                } else {
+                    if (c.powerupType === 'timeDistort') {
+                        timeDistortEnergy = 100;
+                        showQuote("TIME DISTORT RECHARGED!");
+                    } else if (c.powerupType === 'invincibility') {
+                        godMode = true;
+                        showQuote("INVINCIBILITY! (Ironic, isn't it?)");
+                        setTimeout(() => { godMode = false; }, 10000);
+                    } else if (c.powerupType === 'triDamage') {
+                        for (let w of weapons) w.damage *= 3;
+                        showQuote("TRI-DAMAGE! Facts hit 3x harder!");
+                        setTimeout(() => { for (let w of weapons) w.damage /= 3; }, 10000);
+                    }
+                }
+                createExplosion(c.x, c.y, '#ff0', 15);
+                crates.splice(i, 1);
+            }
+        }
+        
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.x += p.vx * dt * timeScale;
+            p.y += p.vy * dt * timeScale;
+            p.vy += 0.1 * dt;
+            p.life -= dt;
+            if (p.life <= 0) particles.splice(i, 1);
+        }
+        
+        // Update trails
+        for (let b of playerBullets) {
+            if (b.trail) {
+                for (let t of b.trail) {
+                    t.life -= dt;
+                }
+                b.trail = b.trail.filter(t => t.life > 0);
+            }
+        }
+        
+        // Quote timer
+        if (quoteTimer > 0) quoteTimer -= dt;
+        
+        // Update UI
+        document.getElementById('score').textContent = score;
+        document.getElementById('health').textContent = Math.max(0, Math.ceil(player.health));
+        document.getElementById('level').textContent = level;
+        document.getElementById('weaponName').textContent = weapons[currentWeapon].name;
+        document.getElementById('ammo').textContent = weaponAmmo[currentWeapon] === Infinity ? '∞' : weaponAmmo[currentWeapon];
+        document.getElementById('quotes').textContent = quoteTimer > 0 ? `"${currentQuote}"` : '';
+        
+        // Time bar
+        let bars = Math.floor(timeDistortEnergy / 5);
+        document.getElementById('timeBar').textContent = '█'.repeat(bars) + '░'.repeat(20 - bars);
+    }
+    
+    function draw() {
+        // Sky gradient
+        let skyGrad = ctx.createLinearGradient(0, 0, 0, 600);
+        if (god) {
+            skyGrad.addColorStop(0, '#300');
+            skyGrad.addColorStop(1, '#000');
+        } else {
+            skyGrad.addColorStop(0, '#001');
+            skyGrad.addColorStop(1, '#113');
+        }
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, 900, 600);
+        
+        // Stars
+        ctx.fillStyle = '#fff';
+        for (let i = 0; i < 50; i++) {
+            let x = (i * 137 + terrainSeed) % 900;
+            let y = (i * 97 + terrainSeed) % 300;
+            let size = 1 + (i % 3);
+            ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.001 + i) * 0.3;
+            ctx.fillRect(x, y, size, size);
+        }
+        ctx.globalAlpha = 1;
+        
+        // Draw platforms
+        for (let plat of platforms) {
+            if (plat.type === 'ground') {
+                // Ground with grass
+                let groundGrad = ctx.createLinearGradient(plat.x, plat.y, plat.x, plat.y + plat.height);
+                groundGrad.addColorStop(0, '#3a5');
+                groundGrad.addColorStop(0.1, '#362');
+                groundGrad.addColorStop(1, '#241');
+                ctx.fillStyle = groundGrad;
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+            } else {
+                // Floating platforms - rocky/scientific looking
+                ctx.fillStyle = '#445';
+                ctx.fillRect(plat.x, plat.y, plat.width, plat.height);
+                ctx.fillStyle = '#556';
+                ctx.fillRect(plat.x, plat.y, plat.width, 5);
+                // Atom symbol decoration
+                if (plat.width > 60) {
+                    ctx.fillStyle = '#0f0';
+                    ctx.font = '12px Arial';
+                    ctx.fillText('⚛', plat.x + plat.width/2 - 6, plat.y + 15);
+                }
+            }
+        }
+        
+        // Draw crates
+        for (let c of crates) c.draw();
+        
+        // Draw particles
+        for (let p of particles) {
+            ctx.globalAlpha = p.life / 60;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+        }
+        ctx.globalAlpha = 1;
+        
+        // Draw bullet trails
+        for (let b of playerBullets) {
+            if (b.trail) {
+                for (let t of b.trail) {
+                    ctx.globalAlpha = t.life / 20;
+                    ctx.fillStyle = b.color;
+                    ctx.beginPath();
+                    ctx.arc(t.x, t.y, 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        }
+        ctx.globalAlpha = 1;
+        
+        // Draw player bullets
+        for (let b of playerBullets) {
+            ctx.fillStyle = b.color;
+            ctx.shadowColor = b.color;
+            ctx.shadowBlur = 10;
+            
+            if (b.type === 'laser') {
+                ctx.strokeStyle = b.color;
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(b.x - b.vx * 3, b.y - b.vy * 3);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+            } else if (b.type === 'rocket' || b.type === 'nuke' || b.type === 'seeker') {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+                ctx.fill();
+                // Exhaust
+                ctx.fillStyle = '#f80';
+                ctx.beginPath();
+                ctx.arc(b.x - b.vx * 0.5, b.y - b.vy * 0.5, b.size * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (b.type === 'grapple') {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(player.x + player.width/2, player.y + player.height/2);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+        }
+        
+        // Draw enemy bullets
+        for (let b of enemyBullets) {
+            ctx.fillStyle = b.color;
+            ctx.shadowColor = b.color;
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+        
+        // Draw angels
+        for (let a of angels) a.draw();
+        
+        // Draw God
+        if (god) god.draw();
+        
+        // Draw player
         drawPlayer();
-        drawUI();
-
-        if (gameState === 'gameover') {
-            drawGameOver();
+        
+        // Time distort effect
+        if (timeDistortActive) {
+            ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+            ctx.fillRect(0, 0, 900, 600);
+            ctx.strokeStyle = '#0ff';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(5, 5, 890, 590);
         }
-
-        frame++;
-        requestAnimationFrame(gameLoop);
+        
+        // God mode indicator
+        if (godMode) {
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.1)';
+            ctx.fillRect(0, 0, 900, 600);
+        }
     }
-
-    // ... rest of the code remains the same ...
-</script>
+    
+    function drawPlayer() {
+        ctx.save();
+        ctx.translate(player.x + player.width/2, player.y);
+        
+        // Flip based on facing/mouse
+        let facingRight = mouseX > player.x + player.width/2;
+        if (!facingRight) ctx.scale(-1, 1);
+        
+        // Body (black hoodie)
+        ctx.fillStyle = '#222';
+        ctx.fillRect(-15, 20, 30, player.height - 20);
+        
+        // Head - bald with beard
+        ctx.fillStyle = '#e8c4a0'; // Skin tone
+        ctx.beginPath();
+        ctx.arc(0, 15, 15, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Beard
+        ctx.fillStyle = '#5c4033';
+        ctx.beginPath();
+        ctx.moveTo(-10, 18);
+        ctx.quadraticCurveTo(-12, 30, -5, 32);
+        ctx.lineTo(5, 32);
+        ctx.quadraticCurveTo(12, 30, 10, 18);
+        ctx.quadraticCurveTo(0, 22, -10, 18);
+        ctx.fill();
+        
+        // Eyes (that enthusiastic expression!)
+        ctx.fillStyle = '#333';
+        ctx.beginPath();
+        ctx.arc(-5, 12, 3, 0, Math.PI * 2);
+        ctx.arc(5, 12, 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Eyebrows raised
+        ctx.strokeStyle = '#5c4033';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-9, 6);
+        ctx.lineTo(-2, 7);
+        ctx.moveTo(2, 7);
+        ctx.lineTo(9, 6);
+        ctx.stroke();
+        
+        // Big smile
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(0, 16, 7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
+        
+        // Gun arm
+        let gunAngle = Math.atan2(mouseY - (player.y + player.height/2), 
+                                  Math.abs(mouseX - player.x - player.width/2));
+        
+        ctx.save();
+        ctx.translate(10, 35);
+        ctx.rotate(facingRight ? gunAngle : -gunAngle);
+        
+        // Arm
+        ctx.fillStyle = '#e8c4a0';
+        ctx.fillRect(0, -3, 20, 6);
+        
+        // Gun
+        ctx.fillStyle = weapons[currentWeapon].color;
+        ctx.fillRect(15, -5, 25, 10);
+        ctx.fillStyle = '#333';
+        ctx.fillRect(35, -3, 10, 6);
+        
+        ctx.restore();
+        
+        // Legs
+        ctx.fillStyle = '#333';
+        ctx.fillRect(-12, player.height - 15, 10, 15);
+        ctx.fillRect(2, player.height - 15, 10, 15);
+        
+        // Fedora (of course)
+        ctx.fillStyle = '#222';
+        ctx.beginPath();
+        ctx.ellipse(0, 2, 20, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(-12, -8, 24, 10);
+        ctx.beginPath();
+        ctx.arc(0, -8, 12, Math.PI, 0);
+        ctx.fill();
+        
+        ctx.restore();
+        
+        // Health bar above player
+        ctx.fillStyle = '#300';
+        ctx.fillRect(player.x, player.y - 15, player.width, 8);
+        ctx.fillStyle = player.health > 30 ? '#0f0' : '#f00';
+        ctx.fillRect(player.x, player.y - 15, player.width * (player.health / 100), 8);
+    }
+    
+    function gameOver() {
+        gameRunning = false;
+        document.getElementById('gameOverScreen').classList.remove('hidden');
+        document.getElementById('finalScore').innerHTML = `<h2>Angels Defeated: ${score}</h2><p>Euphoria Level: ${level}</p>`;
+        document.getElementById('deathQuote').innerHTML = `<p style="color:#888;margin-top:20px;font-style:italic">"${deathQuotes[Math.floor(Math.random() * deathQuotes.length)]}"</p>`;
+    }
+    
+    let lastTime = 0;
+    function gameLoop(timestamp = 0) {
+        let dt = Math.min((timestamp - lastTime) / 16.67, 3); // Cap delta time
+        lastTime = timestamp;
+        
+        if (gameRunning) {
+            update(dt);
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+    }
+    
+    // Initial draw
+    draw();
+    </script>
+</body>
+</html>
